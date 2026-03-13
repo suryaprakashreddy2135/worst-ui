@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Task Torture</title>
+  <style>
+    body{
+      background:linear-gradient(45deg,red,yellow,lime,cyan,magenta);
+      font-family:Comic Sans MS,cursive;
+      text-align:center;
+      margin:0;
+      overflow:hidden;
+      transition:transform 0.8s;
+      min-height:100vh;
+    }
+
+    h1{
+      background:black;
+      color:white;
+      padding:20px;
+      font-size:18px;
+      margin:0;
+    }
+
+    input{
+      width:140px;
+      height:50px;
+      font-size:10px;
+      background:yellow;
+      color:red;
+      border:5px dashed blue;
+      margin-top:30px;
+    }
+
+    button{
+      padding:25px;
+      font-size:22px;
+      margin:10px;
+      cursor:pointer;
+      border:4px dotted black;
+      z-index:10;
+    }
+
+    .btn1{background:lime;color:purple;}
+    .btn2{background:black;color:yellow;}
+    .btn3{background:pink;color:green;}
+    .btn4{background:orange;color:black;}
+    .btn5{background:white;color:red;}
+    .btn6{background:blue;color:orange;}
+    .btn7{background:gold;color:black;}
+
+    ul{
+      list-style-type:square;
+      margin-top:30px;
+      padding:0;
+    }
+
+    li{
+      background:white;
+      margin:15px auto;
+      width:300px;
+      padding:20px;
+      font-size:24px;
+      border:3px solid red;
+    }
+
+    .weirdbox{
+      margin-top:220px;
+      background:orange;
+      padding:30px;
+      width:80%;
+      margin-left:auto;
+      margin-right:auto;
+      border:8px groove purple;
+      position:relative;
+      z-index:1;
+    }
+
+    .progress-wrap{
+      width:60%;
+      height:30px;
+      background:black;
+      margin:30px auto 0 auto;
+      border:5px solid white;
+      position:relative;
+      z-index:1;
+    }
+
+    .progress-bar{
+      height:100%;
+      width:1%;
+      background:lime;
+      color:black;
+      font-size:18px;
+      line-height:30px;
+    }
+
+    #annoyBox{
+      position:fixed;
+      bottom:20px;
+      left:20px;
+      background:yellow;
+      color:red;
+      padding:15px;
+      border:4px solid blue;
+      z-index:999;
+    }
+
+    .button-area{
+      position:relative;
+      height:220px;
+      margin-top:20px;
+    }
+
+    .floating-btn{
+      position:absolute;
+    }
+
+    #btnAdd{top:10px;left:8%;}
+    #btnDelete{top:10px;left:28%;}
+    #runBtn{top:10px;left:48%;}
+    #confirmBtn{top:10px;left:68%;}
+    #darkBtn{top:110px;left:10%;}
+    #saveBtn{top:110px;left:32%;}
+    #fixBtn{top:110px;left:54%;}
+    #teleportBtn{top:110px;left:74%;}
+
+    .flashbang{
+      animation:flashbangEffect 0.8s;
+    }
+
+    @keyframes flashbangEffect{
+      0%{
+        background:white !important;
+        color:white !important;
+        filter:brightness(35) contrast(0);
+      }
+      40%{
+        background:white !important;
+        color:white !important;
+        filter:brightness(30) contrast(0);
+      }
+      100%{
+        filter:brightness(1);
+      }
+    }
+
+    #videoOverlay{
+      position:fixed;
+      top:0;
+      left:0;
+      width:100vw;
+      height:100vh;
+      background:black;
+      display:none;
+      z-index:99999;
+    }
+
+    #darkVideo{
+      width:100%;
+      height:100%;
+      object-fit:cover;
+    }
+  </style>
+</head>
+
+<body>
+
+  <h1>Task Torture — The World's Worst To-Do App</h1>
+
+  <input id="taskInput" placeholder="type maybe idk">
+
+  <div class="button-area">
+    <button class="btn1 floating-btn" onclick="fakeAdd()" id="btnAdd">Add Task</button>
+    <button class="btn2 floating-btn" onclick="addTask()" id="btnDelete">Delete Task</button>
+    <button class="btn3 floating-btn" id="runBtn" onclick="catchMeClicked()">Catch Me</button>
+    <button class="btn4 floating-btn" onclick="patienceTest()" id="confirmBtn">Confirm Action</button>
+    <button class="btn5 floating-btn" onclick="darkMode()" id="darkBtn">Dark Mode</button>
+    <button class="btn6 floating-btn" onclick="fakeLoading()" id="saveBtn">Save Everything</button>
+    <button class="btn7 floating-btn" onclick="fixEverything()" id="fixBtn">Fix Everything</button>
+    <button class="floating-btn" onclick="teleportChaos()" id="teleportBtn">Normal Button</button>
+  </div>
+
+  <div class="progress-wrap">
+    <div class="progress-bar" id="progressBar">1%</div>
+  </div>
+
+  <div class="weirdbox">
+    <marquee scrollamount="20">WELCOME TO PRODUCTIVITY SUFFERING</marquee>
+    <ul id="taskList"></ul>
+  </div>
+
+  <div id="annoyBox">Tip: do not trust any button.</div>
+
+  <div id="videoOverlay">
+    <video id="darkVideo" autoplay muted loop playsinline>
+      <source src="ermee.mp4" type="video/mp4">
+    </video>
+  </div>
+
+  <script>
+    let buttonsLocked = true;
+
+    function randomX(){
+      return Math.max(0, Math.random() * (window.innerWidth - 220));
+    }
+
+    function randomY(){
+      return Math.max(0, 20 + Math.random() * (window.innerHeight - 140));
+    }
+
+    function moveAllButtons(){
+      if(!buttonsLocked) return;
+
+      let buttons = document.querySelectorAll("button");
+
+      buttons.forEach(btn => {
+        btn.style.left = randomX() + "px";
+        btn.style.top = randomY() + "px";
+      });
+    }
+
+    document.querySelectorAll("button").forEach(btn => {
+      btn.addEventListener("mouseover", function(){
+        moveAllButtons();
+      });
+
+      btn.addEventListener("click", function(e){
+        if(buttonsLocked){
+          e.preventDefault();
+          moveAllButtons();
+          alert("Nice try. Buttons are warming up. Wait 5 seconds.");
+        }
+      });
+    });
+
+    setTimeout(function(){
+      buttonsLocked = false;
+      alert("Fine. You can click the buttons now.");
+    }, 5000);
+
+    function addTask(){
+      let input = document.getElementById("taskInput");
+      let task = input.value;
+
+      if(task === ""){
+        alert("Amazing. You entered nothing.");
+        return;
+      }
+
+      let li = document.createElement("li");
+      li.innerText = "☐ " + task + " ❌ maybe saved";
+
+      document.getElementById("taskList").appendChild(li);
+      input.value = "";
+
+      alert("Task deleted successfully.");
+    }
+
+    function fakeAdd(){
+      alert("Are you sure you want to add this task?");
+      alert("Too bad. Nothing happened.");
+    }
+
+    function catchMeClicked(){
+      alert("Congratulations. You caught the button. Nobody cares.");
+    }
+
+    function patienceTest(){
+      for(let i = 1; i <= 10; i++){
+        let ans = confirm("Are you sure? (" + i + "/10)");
+
+        if(!ans){
+          alert("Weak. You gave up early.");
+          return;
+        }
+
+        spinPage();
+      }
+
+      alert("You clicked YES ten times.");
+      alert("Congratulations. You wasted your time.");
+      alert("Your patience is inspiring and deeply concerning.");
+    }
+
+    function spinPage(){
+      let r = document.body.dataset.rotation || 0;
+      r = parseInt(r) + 360;
+      document.body.style.transform = "rotate(" + r + "deg)";
+      document.body.dataset.rotation = r;
+    }
+
+    function fakeLoading(){
+      let bar = document.getElementById("progressBar");
+      let width = 1;
+
+      let i = setInterval(function(){
+        width += Math.floor(Math.random() * 10);
+
+        if(width >= 99){
+          width = 99;
+          bar.style.width = "99%";
+          bar.innerText = "99%";
+          clearInterval(i);
+          alert("Loading stuck at 99%. Forever.");
+        } else {
+          bar.style.width = width + "%";
+          bar.innerText = width + "%";
+        }
+      }, 300);
+    }
+
+    function teleportChaos(){
+      let btn = document.getElementById("teleportBtn");
+      btn.style.left = randomX() + "px";
+      btn.style.top = randomY() + "px";
+      alert("You almost clicked something useful.");
+    }
+
+    function darkMode(){
+      alert("Activating Dark Mode...");
+
+      let overlay = document.getElementById("videoOverlay");
+      let video = document.getElementById("darkVideo");
+
+      overlay.style.display = "block";
+      video.currentTime = 0;
+
+      let playPromise = video.play();
+      if (playPromise !== undefined) {
+        playPromise.catch(function(){
+          alert("Video refused to autoplay. Click anywhere and try again.");
+        });
+      }
+    }
+
+    function fixEverything(){
+      alert("Attempting to fix all UI problems...");
+
+      setTimeout(function(){
+        window.location.href = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
+      }, 1500);
+    }
+
+    function flashbang(){
+      document.documentElement.classList.add("flashbang");
+
+      setTimeout(function(){
+        document.documentElement.classList.remove("flashbang");
+      }, 800);
+    }
+
+    setInterval(flashbang, 10000);
+
+    setInterval(function(){
+      alert("Reminder: your suffering matters to us.");
+    }, 20000);
+
+    setInterval(function(){
+      document.getElementById("taskInput").value = "";
+    }, 8000);
+
+    document.addEventListener("contextmenu", function(e){
+      e.preventDefault();
+      alert("Right click disabled.");
+    });
+
+    document.addEventListener("copy", function(e){
+      e.preventDefault();
+      alert("Copying is forbidden.");
+    });
+  </script>
+
+</body>
+</html>
