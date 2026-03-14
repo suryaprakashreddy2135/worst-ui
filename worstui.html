@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Mario OTP</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #1a1a2e;
+    display: flex; align-items: center; justify-content: center;
+    min-height: 100vh;
+    font-family: 'Press Start 2P', monospace;
+  }
+  .card {
+    background: #f0f0f0;
+    border-radius: 12px;
+    padding: 24px 28px 20px;
+    width: 440px;
+    box-shadow: 0 8px 40px #0009;
+    text-align: center;
+  }
+  .card-title {
+    font-size: 11px; color: #222; line-height: 1.8;
+    margin-bottom: 14px; font-family: Arial, sans-serif;
+  }
+  .otp-row {
+    display: flex; gap: 8px; justify-content: center; margin-bottom: 8px;
+  }
+  .otp-box {
+    width: 50px; height: 54px; background: #ccc;
+    border-radius: 6px; display: flex; align-items: center;
+    justify-content: center; font-size: 22px; color: #222;
+    border: 2px solid #bbb; transition: background 0.2s, border-color 0.2s;
+  }
+  .otp-box.filled { background: #fff; border-color: #e00; color: #c00; }
+  .otp-box.shake {
+    animation: bshake 0.4s ease; background: #fcc; border-color: #f00;
+  }
+  @keyframes bshake {
+    0%,100%{transform:translateX(0)}20%{transform:translateX(-6px)}
+    40%{transform:translateX(6px)}60%{transform:translateX(-4px)}80%{transform:translateX(4px)}
+  }
+  .status-msg { font-size: 7px; color: #c00; margin-bottom: 4px; height: 16px; }
+  .status-msg.ok { color: #090; }
+  .controls { font-size: 10px; color: #777; margin-bottom: 10px; font-family: Arial, sans-serif; }
+  .game-wrap {
+    position: relative; width: 384px; height: 230px;
+    margin: 0 auto 14px;
+    border: 8px solid #7070cc; border-radius: 4px;
+    overflow: hidden; box-shadow: inset 0 0 0 4px #5050aa;
+  }
+  canvas { display: block; width: 384px; height: 230px; image-rendering: pixelated; }
+  .verify-btn {
+    background: #e00; color: #fff; border: none; border-radius: 6px;
+    font-family: 'Press Start 2P', monospace; font-size: 13px;
+    padding: 14px 0; width: 100%; cursor: pointer;
+    letter-spacing: 2px; box-shadow: 0 4px 0 #900;
+    transition: transform 0.1s, box-shadow 0.1s;
+  }
+  .verify-btn:active { transform: translateY(2px); box-shadow: 0 2px 0 #900; }
+  .verify-btn:hover { background: #c00; }
+  .resend { margin-top: 10px; font-size: 11px; color: #555; font-family: Arial, sans-serif; }
+  .resend a { color: #e00; font-weight: bold; cursor: pointer; }
+</style>
+</head>
+<body>
+<div class="card">
+  <p class="card-title">Please use the game below to enter the<br>verification code sent to (•••) •••-••••.</p>
+  <div class="otp-row">
+    <div class="otp-box" id="b0"></div>
+    <div class="otp-box" id="b1"></div>
+    <div class="otp-box" id="b2"></div>
+    <div class="otp-box" id="b3"></div>
+    <div class="otp-box" id="b4"></div>
+    <div class="otp-box" id="b5"></div>
+  </div>
+  <div class="status-msg" id="statusMsg">Jump into the spinning digits!</div>
+  <div class="controls">← → / A D to move &nbsp;|&nbsp; ↑ / W / Space to jump</div>
+  <div class="game-wrap">
+    <canvas id="c" width="384" height="230"></canvas>
+  </div>
+  <button class="verify-btn" onclick="verify()">VERIFY</button>
+  <p class="resend">Didn't receive the code? <a onclick="resetGame()">Resend</a></p>
+</div>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const W = 384, H = 230;
+const FLOOR = H - 30;
+
+// ── Circle of coins config ──────────────────────────────────────────────────
+const CIRCLE_CX = W / 2;       // center x of the rotating ring
+const CIRCLE_CY = H / 2 - 55;  // center y — higher up
+const CIRCLE_R  = 72;           // radius of the ring
+const NUM_COINS  = 10;          // coins in the ring
+let ringAngle    = 0;           // rotation of entire ring
+const RING_SPEED = 0.005;       // radians per frame — slower
+
+// Each coin has a fixed digit (0-9 around the ring)
+const ringCoins = Array.from({length: NUM_COINS}, (_, i) => ({
+  digit: i,           // digit 0-9
+  spinAngle: 0,       // individual face-spin
+  collected: false,
+}));
+
+// ── Mario ───────────────────────────────────────────────────────────────────
+const mario = {
+  x: 60, y: FLOOR, w: 20, h: 26,
+  vx: 0, vy: 0,
+  onGround: false,
+  facing: 1,
+  frame: 0, fTimer: 0,
+  hurt: false, hurtTimer: 0,
+};
+
+// ── Goombas ─────────────────────────────────────────────────────────────────
+let goombas = [];
+let goombaTimer = 140;
+
+function spawnGoomba() {
+  const left = Math.random() < 0.5;
+  goombas.push({
+    x: left ? -30 : W + 30, y: FLOOR,
+    vx: left ? 1.9 : -1.9,
+    w: 26, h: 26,
+    frame: 0, fTimer: 0,
+  });
+}
+
+// ── Particles ────────────────────────────────────────────────────────────────
+let particles = [];
+function spawnParticles(x, y, label) {
+  for (let i = 0; i < 8; i++) {
+    particles.push({
+      x, y,
+      vx: (Math.random() - 0.5) * 6,
+      vy: -2 - Math.random() * 4,
+      life: 1, label,
+      size: 10 + Math.random() * 8,
+    });
+  }
+}
+
+// ── Input ────────────────────────────────────────────────────────────────────
+const keys = {};
+document.addEventListener('keydown', e => {
+  keys[e.code] = true;
+  if (['Space','ArrowUp','ArrowLeft','ArrowRight','ArrowDown'].includes(e.code)) e.preventDefault();
+  if ((e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') && mario.onGround && !mario.hurt) {
+    mario.vy = -10.8;
+    mario.onGround = false;
+  }
+});
+document.addEventListener('keyup', e => { keys[e.code] = false; });
+
+// ── OTP ──────────────────────────────────────────────────────────────────────
+let collected = [];
+
+function otpCollect(digit) {
+  if (collected.length >= 6) return;
+  collected.push(digit);
+  refreshBoxes();
+  const st = document.getElementById('statusMsg');
+  if (collected.length === 6) {
+    st.textContent = '★ All 6 collected! Press VERIFY!';
+    st.className = 'status-msg ok';
+  } else {
+    st.textContent = `Collected ${collected.length}/6!`;
+    st.className = 'status-msg ok';
+  }
+}
+
+function refreshBoxes() {
+  for (let i = 0; i < 6; i++) {
+    const b = document.getElementById('b' + i);
+    b.textContent = i < collected.length ? collected[i] : '';
+    b.className = 'otp-box' + (i < collected.length ? ' filled' : '');
+  }
+}
+
+function resetOTP() {
+  collected = [];
+  // Un-collect all ring coins
+  ringCoins.forEach(c => c.collected = false);
+  for (let i = 0; i < 6; i++) {
+    const b = document.getElementById('b' + i);
+    b.textContent = '';
+    b.className = 'otp-box shake';
+    setTimeout(() => { b.className = 'otp-box'; }, 500);
+  }
+  const st = document.getElementById('statusMsg');
+  st.textContent = '💀 HIT! Code reset!';
+  st.className = 'status-msg';
+  setTimeout(() => { st.textContent = 'Jump into the spinning digits!'; }, 1800);
+}
+
+function verify() {
+  const st = document.getElementById('statusMsg');
+  if (collected.length === 6) {
+    st.textContent = '🌟 CODE ACCEPTED! Welcome!';
+    st.className = 'status-msg ok';
+  } else {
+    st.textContent = `Need all 6! You have ${collected.length}.`;
+    st.className = 'status-msg';
+  }
+}
+
+function resetGame() {
+  collected = [];
+  refreshBoxes();
+  mario.x = 60; mario.y = FLOOR;
+  mario.vx = 0; mario.vy = 0;
+  mario.hurt = false; mario.hurtTimer = 0;
+  goombas = []; particles = [];
+  goombaTimer = 140;
+  ringCoins.forEach(c => c.collected = false);
+  document.getElementById('statusMsg').textContent = 'Jump into the spinning digits!';
+  document.getElementById('statusMsg').className = 'status-msg';
+}
+
+// ── Update ────────────────────────────────────────────────────────────────────
+let t = 0;
+function update() {
+  t++;
+
+  // Mario input
+  if (!mario.hurt) {
+    if (keys['ArrowLeft'] || keys['KeyA']) { mario.vx = -3.2; mario.facing = -1; }
+    else if (keys['ArrowRight'] || keys['KeyD']) { mario.vx = 3.2; mario.facing = 1; }
+    else mario.vx *= 0.65;
+  } else {
+    mario.vx *= 0.85;
+  }
+
+  mario.vy += 0.55;
+  mario.x += mario.vx;
+  mario.y += mario.vy;
+
+  if (mario.y >= FLOOR) { mario.y = FLOOR; mario.vy = 0; mario.onGround = true; }
+  else mario.onGround = false;
+
+  if (mario.x < -mario.w) mario.x = W;
+  if (mario.x > W) mario.x = -mario.w;
+
+  if (mario.hurt) { mario.hurtTimer--; if (mario.hurtTimer <= 0) mario.hurt = false; }
+
+  // Walk anim
+  if (Math.abs(mario.vx) > 0.3 && mario.onGround) {
+    mario.fTimer++;
+    if (mario.fTimer > 9) { mario.frame = (mario.frame + 1) % 2; mario.fTimer = 0; }
+  }
+
+  // Rotate ring
+  ringAngle += RING_SPEED;
+
+  // Spin each coin face
+  ringCoins.forEach(c => { if (!c.collected) c.spinAngle += 0.03; });
+
+  // Coin collection check
+  if (!mario.hurt && collected.length < 6) {
+    const COIN_R = 14; // hit radius of each coin
+    ringCoins.forEach(c => {
+      if (c.collected) return;
+      const angle = ringAngle + (c.digit / NUM_COINS) * Math.PI * 2;
+      const cx = CIRCLE_CX + Math.cos(angle) * CIRCLE_R;
+      const cy = CIRCLE_CY + Math.sin(angle) * CIRCLE_R;
+
+      // Mario center
+      const mx = mario.x + mario.w / 2;
+      const my = mario.y - mario.h / 2;
+      const dx = mx - cx, dy = my - cy;
+      if (Math.sqrt(dx*dx + dy*dy) < COIN_R + 10) {
+        c.collected = true;
+        spawnParticles(cx, cy, c.digit);
+        otpCollect(c.digit);
+      }
+    });
+  }
+
+  // Goombas
+  goombaTimer--;
+  if (goombaTimer <= 0) {
+    spawnGoomba();
+    goombaTimer = 140 + Math.floor(Math.random() * 80);
+  }
+
+  goombas = goombas.filter(g => {
+    g.x += g.vx;
+    g.fTimer++;
+    if (g.fTimer > 14) { g.frame = (g.frame + 1) % 2; g.fTimer = 0; }
+
+    if (!mario.hurt) {
+      const ox = mario.x < g.x + g.w - 3 && mario.x + mario.w > g.x + 3;
+      const oy = mario.y - mario.h < g.y && mario.y > g.y - g.h;
+      if (ox && oy) {
+        if (mario.vy > 1 && mario.y - mario.h < g.y - g.h + 10) {
+          mario.vy = -9;
+          spawnParticles(g.x + 13, g.y - g.h, '★');
+          return false;
+        } else if (!mario.hurt) {
+          mario.hurt = true;
+          mario.hurtTimer = 100;
+          mario.vy = -8;
+          mario.vx = -mario.facing * 2.5;
+          resetOTP();
+        }
+      }
+    }
+    return g.x > -60 && g.x < W + 60;
+  });
+
+  // Particles
+  particles = particles.filter(p => {
+    p.x += p.vx; p.y += p.vy; p.vy += 0.2; p.life -= 0.035;
+    return p.life > 0;
+  });
+}
+
+// ── Draw ──────────────────────────────────────────────────────────────────────
+function px(x, y, w, h, c) { ctx.fillStyle = c; ctx.fillRect(x, y, w, h); }
+
+function drawBg() {
+  const sky = ctx.createLinearGradient(0, 0, 0, H);
+  sky.addColorStop(0, '#2848a0'); sky.addColorStop(1, '#5070c8');
+  ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H);
+  ctx.strokeStyle = 'rgba(255,255,255,0.055)'; ctx.lineWidth = 1;
+  for (let xi = -H; xi < W + H; xi += 22) {
+    ctx.beginPath(); ctx.moveTo(xi, 0); ctx.lineTo(xi + H, H); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(xi, 0); ctx.lineTo(xi - H, H); ctx.stroke();
+  }
+  // clouds
+  ctx.fillStyle = 'rgba(255,255,255,0.16)';
+  [[55,22,28,12],[190,15,22,9],[320,28,34,13]].forEach(([cx,cy,rx,ry]) => {
+    ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(cx-12, cy+5, rx*0.55, ry*0.7, 0, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(cx+12, cy+5, rx*0.65, ry*0.7, 0, 0, Math.PI*2); ctx.fill();
+  });
+}
+
+function drawGround() {
+  ctx.fillStyle = '#8b5e3c'; ctx.fillRect(0, FLOOR + 2, W, H - FLOOR - 2);
+  ctx.fillStyle = '#5a8a00'; ctx.fillRect(0, FLOOR - 4, W, 8);
+  ctx.fillStyle = '#4a7800';
+  for (let x = 0; x < W; x += 32) ctx.fillRect(x, FLOOR - 6, 32, 2);
+  ctx.strokeStyle = 'rgba(0,0,0,0.12)'; ctx.lineWidth = 1;
+  for (let x = 0; x < W; x += 32) ctx.strokeRect(x, FLOOR + 2, 32, 32);
+}
+
+function drawRing() {
+  // Dashed orbit circle
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([6, 6]);
+  ctx.beginPath();
+  ctx.arc(CIRCLE_CX, CIRCLE_CY, CIRCLE_R, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+
+  // Draw each coin
+  ringCoins.forEach(coin => {
+    const angle = ringAngle + (coin.digit / NUM_COINS) * Math.PI * 2;
+    const cx = CIRCLE_CX + Math.cos(angle) * CIRCLE_R;
+    const cy = CIRCLE_CY + Math.sin(angle) * CIRCLE_R;
+
+    if (coin.collected) {
+      // Ghost outline where coin was
+      ctx.save();
+      ctx.globalAlpha = 0.18;
+      ctx.strokeStyle = '#ffe066';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, 13, 14, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+      return;
+    }
+
+    const scaleX = Math.abs(Math.cos(coin.spinAngle));
+    const rw = Math.max(1.5, 13 * scaleX);
+
+    ctx.save();
+    ctx.translate(cx, cy);
+
+    // Shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.2)';
+    ctx.beginPath();
+    ctx.ellipse(0, 17, rw + 2, 3, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Coin body gradient
+    const g = ctx.createLinearGradient(-rw, -14, rw, 14);
+    g.addColorStop(0, '#ffe066');
+    g.addColorStop(0.45, '#fff8bb');
+    g.addColorStop(1, '#d48800');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, rw, 14, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Rim
+    ctx.strokeStyle = '#b07000';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, rw, 14, 0, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Digit (when face-on)
+    if (scaleX > 0.2) {
+      ctx.globalAlpha = Math.min(1, scaleX * 1.6);
+      ctx.fillStyle = '#7a4400';
+      ctx.font = `bold ${Math.round(10 * scaleX + 1)}px 'Press Start 2P', monospace`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(coin.digit, 0, 1);
+    }
+
+    ctx.restore();
+  });
+}
+
+function drawMario() {
+  const sx = Math.round(mario.x);
+  const sy = Math.round(mario.y - mario.h);
+  ctx.save();
+  ctx.translate(mario.facing < 0 ? sx + mario.w : sx, sy);
+  if (mario.facing < 0) ctx.scale(-1, 1);
+  if (mario.hurt && Math.floor(t / 4) % 2 === 0) ctx.globalAlpha = 0.3;
+
+  px(4,0,12,3,'#e00'); px(1,3,18,3,'#e00');         // hat
+  px(2,6,16,5,'#f8c080');                             // face
+  px(12,7,3,2,'#000');                                // eye
+  px(5,10,13,2,'#6b3400');                            // mustache
+  px(1,13,3,6,'#00a'); px(16,13,3,6,'#00a');          // suspenders
+  px(4,13,12,5,'#e00');                               // shirt
+  px(3,17,14,5,'#00a');                               // overalls
+  px(8,14,4,2,'#ff0');                                // buckle
+  px(0,13,3,5,'#f8c080'); px(17,13,3,5,'#f8c080');   // arms
+  const wf = !mario.onGround ? 0 : mario.frame % 2;
+  if (wf===0){
+    px(3,22,6,5,'#00a'); px(11,22,6,5,'#00a');
+    px(2,26,7,2,'#6b3400'); px(11,26,7,2,'#6b3400');
+  } else {
+    px(2,22,7,5,'#00a'); px(11,23,6,4,'#00a');
+    px(1,26,8,2,'#6b3400'); px(11,26,6,2,'#6b3400');
+  }
+  ctx.restore();
+}
+
+function drawGoomba(g) {
+  ctx.save();
+  ctx.translate(Math.round(g.x), Math.round(g.y - g.h));
+  px(2,10,22,12,'#8b4513'); px(1,2,24,10,'#a0522d'); px(0,5,26,7,'#8b4513');
+  px(2,4,7,6,'#fff'); px(17,4,7,6,'#fff');
+  px(6,6,3,3,'#000'); px(17,6,3,3,'#000');
+  ctx.fillStyle='#000';
+  ctx.beginPath();ctx.moveTo(2,3);ctx.lineTo(9,5);ctx.lineTo(9,6);ctx.lineTo(2,4);ctx.fill();
+  ctx.beginPath();ctx.moveTo(24,3);ctx.lineTo(17,5);ctx.lineTo(17,6);ctx.lineTo(24,4);ctx.fill();
+  px(5,13,16,1,'#000'); px(5,14,4,3,'#fff'); px(17,14,4,3,'#fff');
+  const fo = g.frame===0?0:2;
+  px(1,22+fo,9,4,'#5c3317'); px(16,22-fo,9,4,'#5c3317');
+  px(0,25+fo,10,2,'#3b1f0a'); px(16,24-fo,10,2,'#3b1f0a');
+  ctx.restore();
+}
+
+function draw() {
+  ctx.clearRect(0,0,W,H);
+  drawBg();
+  drawGround();
+  drawRing();
+  goombas.forEach(drawGoomba);
+  drawMario();
+
+  particles.forEach(p => {
+    ctx.save();
+    ctx.globalAlpha = p.life;
+    ctx.fillStyle = '#ffe033';
+    ctx.font = `bold ${Math.round(p.size)}px Arial`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(p.label, p.x, p.y);
+    ctx.restore();
+  });
+
+  // HUD
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  ctx.fillRect(5,5,96,20);
+  ctx.fillStyle = '#ffe033';
+  ctx.font = '7px "Press Start 2P"';
+  ctx.textAlign = 'left';
+  ctx.fillText(`DIGITS: ${collected.length}/6`, 10, 19);
+}
+
+function loop() { update(); draw(); requestAnimationFrame(loop); }
+loop();
+</script>
+</body>
+</html>
